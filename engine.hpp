@@ -2,7 +2,6 @@
 #include <iostream>
 #include <unordered_map>
 #include <cctype>
-#include <array>
 
 namespace engine
 {
@@ -32,6 +31,14 @@ namespace engine
         
         static constexpr int columns{ 12 };
         static constexpr int rows{ 12 };
+
+        static constexpr int padding{ -9 };
+    }
+
+    namespace Colour
+    {
+        static constexpr int white{ 1 };
+        static constexpr int black{ -1 };
     }
 
     struct Move
@@ -137,43 +144,83 @@ namespace engine
             }
         }
 
-        MovesInfo pseudo_legal_move_gen()
+        MovesInfo pseudo_legal_move_gen(int colour) // 1 = white, -1 = black
         {
             std::array<Move, 218> pseudo_legal_moves{};
             int counter{}; // To keep track of which index we're on in the move list
 
             static constexpr std::array<int,8> knight_offsets{ +25, +23, +14, +10, -10, -14, -23, -25};//knight offsets
             static constexpr std::array<int,8> king_offsets{ +1, +13, +12, +11, -1, -13, -12, -11};
+            static constexpr std::array<int, 4> bishop_offsets{ 13, 11, -11, -13 };
+            static constexpr std::array<int, 4> rook_offsets{ 12, 1, -1, -12 };
             for (int i{}; i < board.size(); i++)
             {
                 // And now we just check every square and if it's x piece, apply x's movement
                 int piece = board[i];
-                if (piece == -9 || piece == Piece::empty) continue;
+                if (piece == BoardPart::padding || piece == Piece::empty) continue;
+                if (piece * colour < 0) continue; // If the current piece isn't of the colour we're searching for
 
                 // knight moves
-                if(piece == Piece::black_knight || piece == Piece::white_knight){
+                if(piece == Piece::white_knight * colour){
                     for(int offset : knight_offsets){
                         int target_loc = i + offset;
-                        if(board[target_loc] == -9) continue; // padding encountered
-                        if(board[target_loc] == Piece::empty || (board[target_loc]*piece < 0)){ //opponent capture means target and current pieces of different signs
+                        if(board[target_loc] == BoardPart::padding) continue; // padding encountered
+                        if(board[target_loc]*piece <= 0){ //opponent capture means target and current pieces of different signs
                             pseudo_legal_moves[counter++] = Move{i, target_loc, 0};
                         }
                     }
                 }
 
                 //king moves
-                if(piece == Piece::black_king || piece == Piece::white_king){
+                if(piece == Piece::white_king * colour){
                     for(int offset : king_offsets){
                         int target_loc = i + offset;
-                        if(board[target_loc] == -9) continue; // padding encountered
-                        if(board[target_loc] == Piece::empty || (board[target_loc]*piece < 0)){ //opponent capture means target and current pieces of different signs
+                        if(board[target_loc] == BoardPart::padding) continue; // padding encountered
+                        if(board[target_loc]*piece <= 0){ //opponent capture means target and current pieces of different signs
                             // rules like castling not implemented yet
                             pseudo_legal_moves[counter++] = Move{i, target_loc, 0};
                         }
                     }
                 }
-            }
 
+                // Bishop moves and diagonal queen moves
+                if (piece == Piece::white_bishop * colour || piece == Piece::white_queen * colour)
+                {
+                    for (int j{}; j < bishop_offsets.size(); j++)
+                    {
+                        int target_loc{ i + bishop_offsets[j] };
+                        while (board[target_loc] * piece <= 0 && board[target_loc] != BoardPart::padding)
+                        {
+                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0};
+                            if (board[target_loc] != Piece::empty) // Stop if it hit a piece
+                            {
+                                break;
+                            }
+
+                            target_loc += bishop_offsets[j];
+                        }
+                    }
+                }
+
+                // Rook moves and horizontal and vertical queen moves
+                if (piece == Piece::white_rook * colour || piece == Piece::white_queen * colour)
+                {
+                    for (int j{}; j < rook_offsets.size(); j++)
+                    {
+                        int target_loc{ i + rook_offsets[j] };
+                        while (board[target_loc] * piece <= 0 && board[target_loc] != BoardPart::padding)
+                        {
+                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0};
+                            if (board[target_loc] != Piece::empty) // Stop if it hit a piece
+                            {
+                                break;
+                            }
+
+                            target_loc += rook_offsets[j];
+                        }
+                    }
+                }
+            }
             
             return MovesInfo{pseudo_legal_moves,counter};
         }
