@@ -7,7 +7,7 @@ int main()
 
     if(DEBUG){
         // to test move gen(temporary)
-        auto moves = board.pseudo_legal_move_gen();
+        auto moves = board.pseudo_legal_move_gen(engine::Colour::white);
         std::cout << "Total moves: " << moves.count << '\n';
     }
 
