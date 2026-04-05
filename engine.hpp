@@ -143,6 +143,7 @@ namespace engine
             int counter{}; // To keep track of which index we're on in the move list
 
             static constexpr std::array<int,8> knight_offsets{ +25, +23, +14, +10, -10, -14, -23, -25};//knight offsets
+            static constexpr std::array<int,8> king_offsets{ +1, +13, +12, +11, -1, -13, -12, -11};
             for (int i{}; i < board.size(); i++)
             {
                 // And now we just check every square and if it's x piece, apply x's movement
@@ -155,6 +156,18 @@ namespace engine
                         int target_loc = i + offset;
                         if(board[target_loc] == -9) continue; // padding encountered
                         if(board[target_loc] == Piece::empty || (board[target_loc]*piece < 0)){ //opponent capture means target and current pieces of different signs
+                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0};
+                        }
+                    }
+                }
+
+                //king moves
+                if(piece == Piece::black_king || piece == Piece::white_king){
+                    for(int offset : king_offsets){
+                        int target_loc = i + offset;
+                        if(board[target_loc] == -9) continue; // padding encountered
+                        if(board[target_loc] == Piece::empty || (board[target_loc]*piece < 0)){ //opponent capture means target and current pieces of different signs
+                            // rules like castling not implemented yet
                             pseudo_legal_moves[counter++] = Move{i, target_loc, 0};
                         }
                     }
