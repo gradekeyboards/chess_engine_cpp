@@ -183,6 +183,81 @@ namespace engine
                     }
                 }
 
+                //pawn moves
+                if(piece == Piece::white_pawn * colour){
+                    int forward = -(colour)*BoardPart::columns; // for white , forward = upwards(-12) and for black forwar = downward(+12)
+                    int one_step = i + forward;
+                    int two_steps = i + 2*forward;
+
+                    int left_capture = one_step - 1;
+                    int right_capture = one_step + 1;
+
+                    int current_row = i / BoardPart::columns;
+                    int target_row = one_step / BoardPart::columns;
+
+                    int starting_row = 0;
+                    int promotion_row = 0;
+                    if(colour == 1){
+                        starting_row = 8;
+                        promotion_row = 2;
+                    }
+                    else{
+                        starting_row = 3;
+                        promotion_row = 9;
+                    }
+
+                    //single move
+                    if(board[one_step] == Piece::empty){
+                        //check promotion
+                        if(target_row == promotion_row){
+                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_queen*colour};
+                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_rook*colour};
+                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_knight*colour};
+                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_bishop*colour};
+                        }
+                        else{
+                            pseudo_legal_moves[counter++] = Move{i, one_step, 0}; // no promotion, only 1 step forward
+                        }
+                    }
+
+                    //double move
+                    if(current_row == starting_row && board[one_step] == Piece::empty && board[two_steps] == Piece::empty){
+                        pseudo_legal_moves[counter++] = Move{i, two_steps, 0};
+                    }
+
+                    //left capture
+                    if(board[left_capture] != BoardPart::padding && board[left_capture]*piece < 0){ // avoid padding and target location has opponent piece only
+                        target_row = left_capture / BoardPart::columns;
+                        if(target_row == promotion_row){
+                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_queen*colour};
+                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_rook*colour};
+                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_knight*colour};
+                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_bishop*colour};
+                        }
+                        else{
+                            pseudo_legal_moves[counter++] = Move{i, left_capture, 0};
+                        }
+                    }
+
+                    //right capture
+                    if(board[right_capture] != BoardPart::padding && board[right_capture]*piece < 0){ // avoid padding and target location has opponent piece only
+                        target_row = right_capture / BoardPart::columns;
+                        if(target_row == promotion_row){
+                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_queen*colour};
+                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_rook*colour};
+                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_knight*colour};
+                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_bishop*colour};
+                        }
+                        else{
+                            pseudo_legal_moves[counter++] = Move{i, right_capture, 0};
+                        }
+                    }
+
+                    //en passant left
+                    //later will write a function to reduce redundancy
+                    //might as well edit struct Move and add enum MoveFlag to store movetype(capture, quiet, en passant, castle,promotion, promotion-capture ,etc)
+                }
+
                 // Bishop moves and diagonal queen moves
                 if (piece == Piece::white_bishop * colour || piece == Piece::white_queen * colour)
                 {
