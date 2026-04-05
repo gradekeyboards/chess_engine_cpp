@@ -2,6 +2,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <cctype>
+#include <array>
 
 namespace engine
 {
@@ -32,6 +33,13 @@ namespace engine
         static constexpr int columns{ 12 };
         static constexpr int rows{ 12 };
     }
+
+    struct Move
+    {
+        int start_square;
+        int destination_square;
+        int promotion_piece;
+    };
 
     class Board
     {
@@ -121,6 +129,19 @@ namespace engine
                     }
                 }
             }
+        }
+
+        std::array<Move, 218> pseudo_legal_move_gen()
+        {
+            std::array<Move, 218> pseudo_legal_moves{};
+            int counter{}; // To keep track of which index we're on in the move list
+
+            for (int i{}; i < board.size(); i++)
+            {
+                // And now we just check every square and if it's x piece, apply x's movement
+            }
+
+            return pseudo_legal_moves;
         }
     };
 }
