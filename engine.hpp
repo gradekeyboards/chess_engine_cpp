@@ -41,11 +41,23 @@ namespace engine
         static constexpr int black{ -1 };
     }
 
+    enum class MoveFlag
+    {
+        capture = 1,
+        quiet = 2,
+        double_push = 3,
+        en_passant = 4,
+        castle = 5,
+        promotion = 6,
+        promotion_capture = 7,
+    };
+
     struct Move
     {
         int start_square;
         int destination_square;
         int promotion_piece;
+        MoveFlag move_type;
     };
 
     struct MovesInfo
@@ -165,8 +177,12 @@ namespace engine
                     for(int offset : knight_offsets){
                         int target_loc = i + offset;
                         if(board[target_loc] == BoardPart::padding) continue; // padding encountered
-                        if(board[target_loc]*piece <= 0){ //opponent capture means target and current pieces of different signs
-                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0};
+                        if(board[target_loc]*piece < 0){ //opponent capture means target and current pieces of different signs
+                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0, MoveFlag::capture};
+                        }
+                        else if (board[target_loc] == Piece::empty)
+                        {
+                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0, MoveFlag::quiet};
                         }
                     }
                 }
@@ -176,9 +192,13 @@ namespace engine
                     for(int offset : king_offsets){
                         int target_loc = i + offset;
                         if(board[target_loc] == BoardPart::padding) continue; // padding encountered
-                        if(board[target_loc]*piece <= 0){ //opponent capture means target and current pieces of different signs
+                        if(board[target_loc]*piece < 0){ //opponent capture means target and current pieces of different signs
                             // rules like castling not implemented yet
-                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0};
+                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0, MoveFlag::capture};
+                        }
+                        else if (board[target_loc] == Piece::empty)
+                        {
+                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0, MoveFlag::quiet};
                         }
                     }
                 }
@@ -210,32 +230,32 @@ namespace engine
                     if(board[one_step] == Piece::empty){
                         //check promotion
                         if(target_row == promotion_row){
-                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_queen*colour};
-                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_rook*colour};
-                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_knight*colour};
-                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_bishop*colour};
+                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_queen*colour, MoveFlag::promotion};
+                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_rook*colour, MoveFlag::promotion};
+                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_knight*colour, MoveFlag::promotion};
+                            pseudo_legal_moves[counter++] = Move{i, one_step, Piece::white_bishop*colour, MoveFlag::promotion};
                         }
                         else{
-                            pseudo_legal_moves[counter++] = Move{i, one_step, 0}; // no promotion, only 1 step forward
+                            pseudo_legal_moves[counter++] = Move{i, one_step, 0, MoveFlag::quiet}; // no promotion, only 1 step forward
                         }
-                    }
 
-                    //double move
-                    if(current_row == starting_row && board[one_step] == Piece::empty && board[two_steps] == Piece::empty){
-                        pseudo_legal_moves[counter++] = Move{i, two_steps, 0};
+                        //double move
+                        if(current_row == starting_row && board[two_steps] == Piece::empty){
+                            pseudo_legal_moves[counter++] = Move{i, two_steps, 0, MoveFlag::double_push};
+                        }
                     }
 
                     //left capture
                     if(board[left_capture] != BoardPart::padding && board[left_capture]*piece < 0){ // avoid padding and target location has opponent piece only
                         target_row = left_capture / BoardPart::columns;
                         if(target_row == promotion_row){
-                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_queen*colour};
-                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_rook*colour};
-                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_knight*colour};
-                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_bishop*colour};
+                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_queen*colour, MoveFlag::promotion_capture};
+                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_rook*colour, MoveFlag::promotion_capture};
+                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_knight*colour, MoveFlag::promotion_capture};
+                            pseudo_legal_moves[counter++] = Move{i, left_capture, Piece::white_bishop*colour, MoveFlag::promotion_capture};
                         }
                         else{
-                            pseudo_legal_moves[counter++] = Move{i, left_capture, 0};
+                            pseudo_legal_moves[counter++] = Move{i, left_capture, 0, MoveFlag::capture};
                         }
                     }
 
@@ -243,13 +263,13 @@ namespace engine
                     if(board[right_capture] != BoardPart::padding && board[right_capture]*piece < 0){ // avoid padding and target location has opponent piece only
                         target_row = right_capture / BoardPart::columns;
                         if(target_row == promotion_row){
-                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_queen*colour};
-                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_rook*colour};
-                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_knight*colour};
-                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_bishop*colour};
+                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_queen*colour, MoveFlag::promotion_capture};
+                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_rook*colour, MoveFlag::promotion_capture};
+                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_knight*colour, MoveFlag::promotion_capture};
+                            pseudo_legal_moves[counter++] = Move{i, right_capture, Piece::white_bishop*colour, MoveFlag::promotion_capture};
                         }
                         else{
-                            pseudo_legal_moves[counter++] = Move{i, right_capture, 0};
+                            pseudo_legal_moves[counter++] = Move{i, right_capture, 0, MoveFlag::capture};
                         }
                     }
 
@@ -266,9 +286,14 @@ namespace engine
                         int target_loc{ i + bishop_offsets[j] };
                         while (board[target_loc] * piece <= 0 && board[target_loc] != BoardPart::padding)
                         {
-                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0};
+                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0, MoveFlag::quiet};
                             if (board[target_loc] != Piece::empty) // Stop if it hit a piece
                             {
+                                if (board[target_loc] * piece < 0)
+                                {
+                                    pseudo_legal_moves[counter - 1].move_type = MoveFlag::capture;
+                                }
+
                                 break;
                             }
 
@@ -285,9 +310,14 @@ namespace engine
                         int target_loc{ i + rook_offsets[j] };
                         while (board[target_loc] * piece <= 0 && board[target_loc] != BoardPart::padding)
                         {
-                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0};
+                            pseudo_legal_moves[counter++] = Move{i, target_loc, 0, MoveFlag::quiet};
                             if (board[target_loc] != Piece::empty) // Stop if it hit a piece
                             {
+                                if (board[target_loc] * piece < 0)
+                                {
+                                    pseudo_legal_moves[counter - 1].move_type = MoveFlag::capture;
+                                }
+
                                 break;
                             }
 
