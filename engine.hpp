@@ -60,6 +60,19 @@ namespace engine
         std::array<int, 144> board{};
         std::unordered_map<int, char> id_to_piece{};
 
+        bool white_kingside_castle = true;
+        bool white_queenside_castle = true;
+        bool black_kingside_castle = true;
+        bool black_queenside_castle = true;
+        //used to check castling condition in make_move function
+        static constexpr int white_kingside_rook_starting_square = 120;
+        static constexpr int white_queenside_rook_starting_square = 109;
+        static constexpr int black_kingside_rook_starting_square = 36;
+        static constexpr int black_queenside_rook_starting_square = 25;
+
+        int en_passant_square = -1;
+
+
         public:
         Board()
         {
@@ -177,10 +190,31 @@ namespace engine
                         int target_loc = i + offset;
                         if(board[target_loc] == BoardPart::padding) continue; // padding encountered
                         if(board[target_loc]*piece <= 0){ //opponent capture means target and current pieces of different signs
-                            // rules like castling not implemented yet
                             pseudo_legal_moves[counter++] = Move{i, target_loc, 0};
                         }
                     }
+
+                    // //castling
+                    // if(colour == 1 && white_kingside_castle == true){ //right side white
+                    //     if(board[i+1] == Piece::empty && board[i+2] == Piece::empty && board[i+3] == Piece::white_rook){
+                    //         pseudo_legal_moves[counter++] = Move{i, i+2, 0, MoveFlag::castle};
+                    //     }
+                    // }
+                    // if(colour == -1 && black_kingside_castle == true){ //right side black
+                    //     if(board[i+1] == Piece::empty && board[i+2] == Piece::empty && board[i+3] == Piece::black_rook){
+                    //         pseudo_legal_moves[counter++] = Move{i, i+2, 0, MoveFlag::castle};
+                    //     }
+                    // }
+                    // if(colour == 1 && white_queenside_castle == true){ //left side white
+                    //     if(board[i-1] == Piece::empty && board[i-2] == Piece::empty && board[i-3] == Piece::empty && board[i-4] == Piece::white_rook){
+                    //         pseudo_legal_moves[counter++] = Move{i, i-2, 0, MoveFlag::castle};
+                    //     }
+                    // }
+                    // if(colour == -1 && black_queenside_castle == true){ //left side black
+                    //     if(board[i-1] == Piece::empty && board[i-2] == Piece::empty && board[i-3] == Piece::empty && board[i-4] == Piece::black_rook){
+                    //         pseudo_legal_moves[counter++] = Move{i, i-2, 0, MoveFlag::castle};
+                    //     }
+                    // }
                 }
 
                 //pawn moves
@@ -253,9 +287,17 @@ namespace engine
                         }
                     }
 
-                    //en passant left
+                    //en passant
+                    // if(left_capture == en_passant_square){
+                    //     pseudo_legal_moves[counter++] = Move{i, left_capture, 0, MoveFlag::en_passant};
+                    // }
+                    // if(right_capture == en_passant_square){
+                    //     pseudo_legal_moves[counter++] = Move{i, right_capture, 0, MoveFlag::en_passant};
+                    // }
+
                     //later will write a function to reduce redundancy
                     //might as well edit struct Move and add enum MoveFlag to store movetype(capture, quiet, en passant, castle,promotion, promotion-capture ,etc)
+                    //after writing enum MoveFlag , update each move with appropriate flag: quiet,capture,etc.
                 }
 
                 // Bishop moves and diagonal queen moves
@@ -298,6 +340,106 @@ namespace engine
             }
             
             return MovesInfo{pseudo_legal_moves,counter};
+        }
+
+        void make_move(const Move& move){
+            int piece = board[move.start_square];
+            int captured_piece = board[move.destination_square]; //helpful for updating castling conditions
+            board[move.destination_square] = piece;
+            board[move.start_square] = Piece::empty;
+            
+            //promotion
+            if(move.promotion_piece != 0){
+                board[move.destination_square] = move.promotion_piece;
+            }
+
+            // //en passant
+            // if(move.flag == en_passant){
+            //     if(piece == Piece::white_pawn){
+            //         board[move.destination_square + BoardPart::columns] = Piece::empty;
+            //     }
+            //     else if(piece == Piece::black_pawn){
+            //         board[move.destination_square - BoardPart::columns] = Piece::empty;
+            //     }
+            // }
+
+            // //castling
+            // if(move.flag == castle){
+            //     //king already moved
+
+            //     //kingside(rightside)
+            //     if(move.destination_square > move.start_square){
+            //         if(piece == Piece::white_king){
+            //             board[move.destination_square - 1] = Piece::white_rook;
+            //             board[move.destination_square + 1] = Piece::empty;
+            //         }
+            //         else if(piece == Piece::black_king){
+            //             board[move.destination_square - 1] = Piece::black_rook;
+            //             board[move.destination_square + 1] = Piece::empty;
+            //         }
+            //     }
+            //     else if(move.destination_square < move.start_square){ //queenside(leftside)
+            //         if(piece == Piece::white_king){
+            //             board[move.destination_square + 1] = Piece::white_rook;
+            //             board[move.destination_square - 2] = Piece::empty;
+            //         }
+            //         else if(piece == Piece::black_king){
+            //             board[move.destination_square + 1] = Piece::black_rook;
+            //             board[move.destination_square - 2] = Piece::empty;
+            //         }
+            //     }
+            // }
+
+            // // update en_passant_square
+            // en_passant_square = -1;
+            // if((piece == Piece::white_pawn || piece == Piece::black_pawn) && (move.flag == double_push)){
+            //     en_passant_square = (move.start_square + move.destination_square) / 2;
+            // }
+
+            //update castling
+            //king moves
+            if(piece == Piece::white_king){
+                white_kingside_castle = false;
+                white_queenside_castle = false;
+            }
+            else if(piece == Piece::black_king){
+                black_kingside_castle = false;
+                black_queenside_castle = false;
+            }
+            //rook moved from original square
+            if(piece == Piece::white_rook){
+                if(move.start_square == white_kingside_rook_starting_square){
+                    white_kingside_castle = false;
+                }
+                else if(move.start_square == white_queenside_rook_starting_square){
+                    white_queenside_castle = false;
+                }
+            }
+            else if(piece == Piece::black_rook){
+                if(move.start_square == black_kingside_rook_starting_square){
+                    black_kingside_castle = false;
+                }
+                else if(move.start_square == black_queenside_rook_starting_square){
+                    black_queenside_castle = false;
+                }
+            }
+            //rook was captured
+            if(captured_piece == Piece::white_rook){
+                if(move.destination_square == white_kingside_rook_starting_square){
+                    white_kingside_castle = false;
+                }
+                else if(move.destination_square == white_queenside_rook_starting_square){
+                    white_queenside_castle = false;
+                }
+            }
+            else if(captured_piece == Piece::black_rook){
+                if(move.destination_square == black_kingside_rook_starting_square){
+                    black_kingside_castle = false;
+                }
+                else if(move.destination_square == black_queenside_rook_starting_square){
+                    black_queenside_castle = false;
+                }
+            }
         }
     };
 }
