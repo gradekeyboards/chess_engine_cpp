@@ -72,18 +72,27 @@ namespace engine
         std::array<int, 144> board{};
         std::unordered_map<int, char> id_to_piece{};
 
+        static constexpr std::array<int,8> knight_offsets{ +25, +23, +14, +10, -10, -14, -23, -25};//knight offsets
+        static constexpr std::array<int,8> king_offsets{ +1, +13, +12, +11, -1, -13, -12, -11};
+        static constexpr std::array<int, 4> bishop_offsets{ 13, 11, -11, -13 };
+        static constexpr std::array<int, 4> rook_offsets{ 12, 1, -1, -12 };
+
         bool white_kingside_castle = true;
         bool white_queenside_castle = true;
         bool black_kingside_castle = true;
         bool black_queenside_castle = true;
+
         //used to check castling condition in make_move function
         static constexpr int white_kingside_rook_starting_square = 120;
         static constexpr int white_queenside_rook_starting_square = 109;
         static constexpr int black_kingside_rook_starting_square = 36;
         static constexpr int black_queenside_rook_starting_square = 25;
 
-        int en_passant_square = -1;
+        // To make checking if the kings are in check easier
+        int white_king_position{ 114 };
+        int black_king_position{ 30 };
 
+        int en_passant_square = -1;
 
         public:
         Board()
@@ -169,15 +178,91 @@ namespace engine
             }
         }
 
+        bool is_square_attacked(int square_index, int defending_colour)
+        {
+            int colour = defending_colour;
+
+            int forward = -(colour)*BoardPart::columns; // for white , forward = upwards(-12) and for black forwar = downward(+12)
+            int one_step = square_index + forward;
+
+            int left_capture = one_step - 1;
+            int right_capture = one_step + 1;
+
+            // Pawn attacks
+            if (board[left_capture] * colour == Piece::black_pawn || board[right_capture] * colour == Piece::black_pawn)
+            {
+                return true;
+            }            
+
+            // Knight attacks
+            for (int offset : knight_offsets)
+            {
+                int target_loc{ square_index + offset };
+                if (board[target_loc] * colour == Piece::black_knight)
+                {
+                    return true;
+                }
+            }
+
+            // King attacks
+            for (int offset : king_offsets)
+            {
+                int target_loc{ square_index + offset };
+                if (board[target_loc] * colour == Piece::black_king)
+                {
+                    return true;
+                }
+            }
+
+            // Bishop and diagonal queen attacks
+            for (int i{}; i < bishop_offsets.size(); i++)
+            {
+                int target_loc{ square_index + bishop_offsets[i] };
+                while (board[target_loc] != BoardPart::padding)
+                {
+                    if (board[target_loc] != Piece::empty)
+                    {
+                        if (board[target_loc] * colour == Piece::black_bishop || board[target_loc] * colour == Piece::black_queen)
+                        {
+                            return true;
+                        }
+
+                        // If it is a friendly piece then break
+                        break;
+                    }
+
+                    target_loc += bishop_offsets[i];
+                }
+            }
+
+            // Rook and horizontal and vertical queen attacks
+            for (int i{}; i < rook_offsets.size(); i++)
+            {
+                int target_loc{ square_index + rook_offsets[i] };
+                while (board[target_loc] != BoardPart::padding)
+                {
+                    if (board[target_loc] != Piece::empty)
+                    {
+                        if (board[target_loc] * colour == Piece::black_rook || board[target_loc] * colour == Piece::black_queen)
+                        {
+                            return true;
+                        }
+
+                        break;
+                    }
+
+                    target_loc += rook_offsets[i];
+                }
+            }
+
+            return false;
+        }
+
         MovesInfo pseudo_legal_move_gen(int colour) // 1 = white, -1 = black
         {
             std::array<Move, 218> pseudo_legal_moves{};
             int counter{}; // To keep track of which index we're on in the move list
 
-            static constexpr std::array<int,8> knight_offsets{ +25, +23, +14, +10, -10, -14, -23, -25};//knight offsets
-            static constexpr std::array<int,8> king_offsets{ +1, +13, +12, +11, -1, -13, -12, -11};
-            static constexpr std::array<int, 4> bishop_offsets{ 13, 11, -11, -13 };
-            static constexpr std::array<int, 4> rook_offsets{ 12, 1, -1, -12 };
             for (int i{}; i < board.size(); i++)
             {
                 // And now we just check every square and if it's x piece, apply x's movement
@@ -432,10 +517,14 @@ namespace engine
             if(piece == Piece::white_king){
                 white_kingside_castle = false;
                 white_queenside_castle = false;
+
+                // Also update the king position
+                white_king_position = move.destination_square;
             }
             else if(piece == Piece::black_king){
                 black_kingside_castle = false;
                 black_queenside_castle = false;
+                black_king_position = move.destination_square;
             }
             //rook moved from original square
             if(piece == Piece::white_rook){
