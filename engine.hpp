@@ -66,6 +66,18 @@ namespace engine
         int count;
     };
 
+    // For make_move() and undo_move()
+    struct MoveHistory
+    {
+        int captured_piece;
+        int colour;
+        bool white_kingside_castle;
+        bool white_queenside_castle;
+        bool black_kingside_castle;
+        bool black_queenside_castle;
+        int en_passant_square;
+    };
+
     class Board
     {
         private:
@@ -83,14 +95,17 @@ namespace engine
         bool black_queenside_castle = true;
 
         //used to check castling condition in make_move function
-        static constexpr int white_kingside_rook_starting_square = 120;
-        static constexpr int white_queenside_rook_starting_square = 109;
-        static constexpr int black_kingside_rook_starting_square = 36;
-        static constexpr int black_queenside_rook_starting_square = 25;
+        static constexpr int white_kingside_rook_starting_square = BoardPart::end_index;
+        static constexpr int white_queenside_rook_starting_square = 110;
+        static constexpr int black_kingside_rook_starting_square = 33;
+        static constexpr int black_queenside_rook_starting_square = BoardPart::start_index;
 
         // To make checking if the kings are in check easier
         int white_king_position{ 114 };
         int black_king_position{ 30 };
+
+        int white_king_start_square{ 114 };
+        int black_king_start_square{ 30 };
 
         int en_passant_square = -1;
 
@@ -302,22 +317,23 @@ namespace engine
 
                     //castling
                     if(colour == Colour::white && white_kingside_castle == true){ //right side white
-                        if(board[i+1] == Piece::empty && board[i+2] == Piece::empty && board[i+3] == Piece::white_rook){
+                        // Maybe we should make these for loops at some point?
+                        if(!is_square_attacked(i, colour) && board[i+1] == Piece::empty && !is_square_attacked(i + 1, colour) && board[i+2] == Piece::empty && !is_square_attacked(i + 2, colour) && board[i+3] == Piece::white_rook){
                             pseudo_legal_moves[counter++] = Move{i, i+2, 0, MoveFlag::castle};
                         }
                     }
                     if(colour == Colour::black && black_kingside_castle == true){ //right side black
-                        if(board[i+1] == Piece::empty && board[i+2] == Piece::empty && board[i+3] == Piece::black_rook){
+                        if(!is_square_attacked(i, colour) && board[i+1] == Piece::empty && !is_square_attacked(i + 1, colour) && board[i+2] == Piece::empty && !is_square_attacked(i + 2, colour) && board[i+3] == Piece::black_rook){
                             pseudo_legal_moves[counter++] = Move{i, i+2, 0, MoveFlag::castle};
                         }
                     }
                     if(colour == Colour::white && white_queenside_castle == true){ //left side white
-                        if(board[i-1] == Piece::empty && board[i-2] == Piece::empty && board[i-3] == Piece::empty && board[i-4] == Piece::white_rook){
+                        if(!is_square_attacked(i, colour) && board[i-1] == Piece::empty && !is_square_attacked(i - 1, colour) && board[i-2] == Piece::empty && !is_square_attacked(i - 2, colour) && board[i-3] == Piece::empty && board[i-4] == Piece::white_rook){
                             pseudo_legal_moves[counter++] = Move{i, i-2, 0, MoveFlag::castle};
                         }
                     }
                     if(colour == Colour::black && black_queenside_castle == true){ //left side black
-                        if(board[i-1] == Piece::empty && board[i-2] == Piece::empty && board[i-3] == Piece::empty && board[i-4] == Piece::black_rook){
+                        if(!is_square_attacked(i, colour) && board[i-1] == Piece::empty && !is_square_attacked(i - 1, colour) && board[i-2] == Piece::empty && !is_square_attacked(i - 2, colour) && board[i-3] == Piece::empty && board[i-4] == Piece::black_rook){
                             pseudo_legal_moves[counter++] = Move{i, i-2, 0, MoveFlag::castle};
                         }
                     }
@@ -458,11 +474,21 @@ namespace engine
             return MovesInfo{pseudo_legal_moves,counter};
         }
 
-        void make_move(const Move& move){
+        MoveHistory make_move(const Move& move){
+            MoveHistory history{};
+
             int piece = board[move.start_square];
             int captured_piece = board[move.destination_square]; //helpful for updating castling conditions
             board[move.destination_square] = piece;
             board[move.start_square] = Piece::empty;
+
+            history.captured_piece = captured_piece;
+            history.colour = (piece > 0) ? Colour::white : Colour::black;
+            history.white_kingside_castle = white_kingside_castle;
+            history.white_queenside_castle = white_queenside_castle;
+            history.black_kingside_castle = black_kingside_castle;
+            history.black_queenside_castle = black_queenside_castle;
+            history.en_passant_square = en_passant_square;
             
             //promotion
             if(move.promotion_piece != 0){
@@ -560,6 +586,138 @@ namespace engine
                     black_queenside_castle = false;
                 }
             }
+
+            return history;
+        }
+
+        void undo_move(const Move& move, const MoveHistory& history){
+            int piece = board[move.destination_square];
+            int captured_piece = history.captured_piece;
+            board[move.start_square] = piece;
+            board[move.destination_square] = captured_piece;
+
+            //promotion
+            if(move.promotion_piece != 0){
+                board[move.start_square] = Piece::white_pawn * history.colour;
+            }
+
+            // en passant
+            // TODO: en passant
+            if(move.flag == MoveFlag::en_passant){
+                if(piece == Piece::white_pawn){
+                    board[move.destination_square + BoardPart::columns] = Piece::black_pawn;
+                }
+                else if(piece == Piece::black_pawn){
+                    board[move.destination_square - BoardPart::columns] = Piece::white_pawn;
+                }
+            }
+
+            // //castling
+            if(move.flag == MoveFlag::castle){
+                //king already moved
+
+                //kingside(rightside)
+                if(move.destination_square > move.start_square){
+                    if(piece == Piece::white_king){
+                        board[move.destination_square - 1] = Piece::empty;
+                        board[move.destination_square + 1] = Piece::white_rook;
+                    }
+                    else if(piece == Piece::black_king){
+                        board[move.destination_square - 1] = Piece::empty;
+                        board[move.destination_square + 1] = Piece::black_rook;
+                    }
+                }
+                else if(move.destination_square < move.start_square){ //queenside(leftside)
+                    if(piece == Piece::white_king){
+                        board[move.destination_square + 1] = Piece::empty;
+                        board[move.destination_square - 2] = Piece::white_rook;
+                    }
+                    else if(piece == Piece::black_king){
+                        board[move.destination_square + 1] = Piece::empty;
+                        board[move.destination_square - 2] = Piece::black_rook;
+                    }
+                }
+            }
+
+            // update en_passant_square
+            en_passant_square = history.en_passant_square;
+
+            //update castling
+            //king moves
+            if(piece == Piece::white_king){
+                white_kingside_castle = history.white_kingside_castle;
+                white_queenside_castle = history.white_queenside_castle;
+
+                // Also update the king position
+                white_king_position = move.start_square;
+            }
+            else if(piece == Piece::black_king){
+                black_kingside_castle = history.black_kingside_castle;
+                black_queenside_castle = history.black_queenside_castle;
+                black_king_position = move.start_square;
+            }
+            //rook moved from original square
+            if(piece == Piece::white_rook){
+                if(move.start_square == white_kingside_rook_starting_square){
+                    white_kingside_castle = history.white_kingside_castle;
+                }
+                else if(move.start_square == white_queenside_rook_starting_square){
+                    white_queenside_castle = history.white_queenside_castle;
+                }
+            }
+            else if(piece == Piece::black_rook){
+                if(move.start_square == black_kingside_rook_starting_square){
+                    black_kingside_castle = history.black_kingside_castle;
+                }
+                else if(move.start_square == black_queenside_rook_starting_square){
+                    black_queenside_castle = history.black_queenside_castle;
+                }
+            }
+
+            //rook was captured
+            if(captured_piece == Piece::white_rook){
+                if(move.destination_square == white_kingside_rook_starting_square){
+                    white_kingside_castle = history.white_kingside_castle;
+                }
+                else if(move.destination_square == white_queenside_rook_starting_square){
+                    white_queenside_castle = history.white_queenside_castle;
+                }
+            }
+            else if(captured_piece == Piece::black_rook){
+                if(move.destination_square == black_kingside_rook_starting_square){
+                    black_kingside_castle = history.black_kingside_castle;
+                }
+                else if(move.destination_square == black_queenside_rook_starting_square){
+                    black_queenside_castle = history.black_queenside_castle;
+                }
+            }
+        }
+
+        unsigned long long perft(int depth, int colour)
+        {
+            unsigned long long nodes{};
+
+            if (depth == 0)
+            {
+                return 1ULL;
+            }
+
+            MovesInfo moves{ pseudo_legal_move_gen(colour) };
+            for (int i{}; i < moves.count; i++)
+            {
+                Move& move{ moves.moves[i] };
+                MoveHistory history{ make_move(move) };
+                int target_king_position = (colour == Colour::white) ? white_king_position : black_king_position;
+
+                if (move.flag == MoveFlag::castle || !is_square_attacked(target_king_position, colour)) // Castle moves are already entirely checked if they're legal in the move generation
+                {
+                    nodes += perft(depth - 1, -colour);
+                }
+
+                undo_move(move, history);
+            }
+
+            return nodes;
         }
     };
 }
