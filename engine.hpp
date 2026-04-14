@@ -171,6 +171,9 @@ namespace engine
             }
         }
 
+        friend class Search;
+        friend class Eval;
+
         void print_board()
         {
             std::cout << "+---+---+---+---+---+---+---+---+" << '\n';
@@ -719,5 +722,207 @@ namespace engine
 
             return nodes;
         }
+    };
+
+    class Eval
+    {
+        private:
+        // We can change these later
+        static constexpr std::array<int, 6> piece_values
+        {
+            // P, N, B, R, Q, K
+            100, 300, 350, 500, 1000, 10000
+        };
+
+        public:
+        Board& board_class;
+
+        Eval(Board& board)
+            : board_class(board)
+        {
+
+        }
+
+        int evaluate()
+        {
+            int evaluation{};
+            for (int piece : board_class.board)
+            {
+                int colour = (piece > 0) ? Colour::white : Colour::black;
+                switch (std::abs(piece))
+                {
+                    case Piece::white_pawn:
+                        evaluation += piece_values[Piece::white_pawn] * colour;
+                        break;
+                    case Piece::white_knight:
+                        evaluation += piece_values[Piece::white_knight] * colour;
+                        break;
+                    case Piece::white_bishop:
+                        evaluation += piece_values[Piece::white_bishop] * colour;
+                        break;
+                    case Piece::white_rook:
+                        evaluation += piece_values[Piece::white_rook] * colour;
+                        break;
+                    case Piece::white_queen:
+                        evaluation += piece_values[Piece::white_queen] * colour;
+                        break;
+                    case Piece::white_king:
+                        evaluation += piece_values[Piece::white_king] * colour;
+                        break;
+                    default:
+                        continue;   
+                }
+            }
+
+            return evaluation;
+        }
+
+        int quiescence(int alpha, int beta, int colour)
+        {
+            int best_value{ evaluate() * colour };
+            if (best_value >= beta)
+            {
+                return best_value;
+            }
+
+            if (best_value > alpha)
+            {
+                alpha = best_value;
+            }
+
+            MovesInfo moves{ board_class.pseudo_legal_move_gen(colour) };
+            for (int i{}; i < moves.count; i++)
+            {
+                Move& move{ moves.moves[i] };
+                if (move.flag != MoveFlag::capture && move.flag != MoveFlag::promotion && move.flag != MoveFlag::promotion_capture) continue; // We only want to look at these types of moves for now
+                MoveHistory history{ board_class.make_move(move) };
+
+                int target_king_position = (colour == Colour::white) ? board_class.white_king_position : board_class.black_king_position;
+                if (board_class.is_square_attacked(target_king_position, colour)) // Skip illegal moves
+                {
+                    board_class.undo_move(move, history);
+                    continue;
+                }
+
+                int score{ -quiescence(-beta, -alpha, -colour) };
+                board_class.undo_move(move, history);
+
+                if (score >= beta)
+                {
+                    return score;
+                }
+
+                if (score > best_value)
+                {
+                    best_value = score;
+                }
+
+                if (score > alpha)
+                {
+                    alpha = score;
+                }
+            }
+            return best_value;
+        }
+    };
+
+    struct BestMove
+    {
+        Move move;
+        int eval;
+    };
+
+    class Search
+    {
+        private:
+        public:
+        Board& board_class;
+        Eval& eval_class;
+
+        Search(Board& board, Eval& eval)
+            : board_class(board), eval_class(eval)
+        {
+
+        }
+
+        int negamax(int alpha, int beta, int depth, int colour)
+        {
+            if (depth == 0)
+            {
+                return eval_class.quiescence(alpha, beta, colour);
+            }
+
+            int best_score{ -1000000000 };
+            MovesInfo moves{ board_class.pseudo_legal_move_gen(colour) };
+            for (int i{}; i < moves.count; i++)
+            {
+                Move& move{ moves.moves[i] };
+                MoveHistory history{board_class.make_move(move) };
+
+                int target_king_position = (colour == Colour::white) ? board_class.white_king_position : board_class.black_king_position;
+                if (board_class.is_square_attacked(target_king_position, colour)) // Skip illegal moves
+                {
+                    board_class.undo_move(move, history);
+                    continue;
+                }
+
+                int score{ -negamax(-beta, -alpha, depth - 1, -colour) };
+                board_class.undo_move(move, history);
+
+                if (score > best_score)
+                {
+                    best_score = score;
+                    if (score > alpha)
+                    {
+                        alpha = score;
+                    }
+                }
+
+                if (score >= beta)
+                {
+                    return best_score;
+                }
+            }
+            return best_score;
+        }
+
+        BestMove get_best_move(int depth, int colour)
+        {
+            int alpha{ -1000000000 };
+            static constexpr int beta{ 1000000000 };
+
+            BestMove best_move{};
+            best_move.eval = alpha;
+            
+            MovesInfo moves{ board_class.pseudo_legal_move_gen(colour) };
+            for (int i{}; i < moves.count; i++)
+            {
+                Move& move{ moves.moves[i] };
+                MoveHistory history{board_class.make_move(move) };
+
+                int target_king_position = (colour == Colour::white) ? board_class.white_king_position : board_class.black_king_position;
+                if (board_class.is_square_attacked(target_king_position, colour)) // Skip illegal moves
+                {
+                    board_class.undo_move(move, history);
+                    continue;
+                }
+
+                int score{ -negamax(-beta, -alpha, depth - 1, -colour) };
+                board_class.undo_move(move, history);
+
+                if (score > best_move.eval)
+                {
+                    best_move.eval = score;
+                    best_move.move = move;
+
+                    if (score > alpha)
+                    {
+                        alpha = score;
+                    }
+                }
+            }
+            return best_move;
+        }
+
     };
 }
