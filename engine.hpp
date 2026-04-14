@@ -2,6 +2,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <cctype>
+#include <algorithm>
 
 namespace engine
 {
@@ -58,6 +59,7 @@ namespace engine
         int destination_square;
         int promotion_piece;
         MoveFlag flag;
+        int score;
     };
 
     struct MovesInfo
@@ -728,10 +730,10 @@ namespace engine
     {
         private:
         // We can change these later
-        static constexpr std::array<int, 6> piece_values
+        static constexpr std::array<int, 7> piece_values
         {
-            // P, N, B, R, Q, K
-            100, 300, 350, 500, 1000, 10000
+            // padding, P, N, B, R, Q, K
+            0, 100, 300, 350, 500, 1000, 10000
         };
 
         public:
@@ -776,10 +778,51 @@ namespace engine
 
             return evaluation;
         }
+    };
+
+    struct BestMove
+    {
+        Move move;
+        int eval;
+    };
+
+    class Search
+    {
+        private:
+        public:
+        Board& board_class;
+        Eval& eval_class;
+
+        Search(Board& board, Eval& eval)
+            : board_class(board), eval_class(eval)
+        {
+
+        }
+
+        void order_moves(MovesInfo& moves)
+        {
+            // MVV LVA
+            for (int i{}; i < moves.count; i++)
+            {
+                Move& move{ moves.moves[i] };
+                if (move.flag == MoveFlag::capture)
+                {
+                    int victim{ std::abs(board_class.board[move.destination_square]) };
+                    int attacker{ std::abs(board_class.board[move.start_square]) };
+                    move.score = 10 * victim - attacker;
+                }
+            }
+
+            std::sort(moves.moves.begin(), moves.moves.begin() + moves.count, [](const Move& a, const Move& b)
+                {
+                    return a.score > b.score;
+                }
+            );
+        }
 
         int quiescence(int alpha, int beta, int colour)
         {
-            int best_value{ evaluate() * colour };
+            int best_value{ eval_class.evaluate() * colour };
             if (best_value >= beta)
             {
                 return best_value;
@@ -791,6 +834,7 @@ namespace engine
             }
 
             MovesInfo moves{ board_class.pseudo_legal_move_gen(colour) };
+            order_moves(moves);
             for (int i{}; i < moves.count; i++)
             {
                 Move& move{ moves.moves[i] };
@@ -824,36 +868,17 @@ namespace engine
             }
             return best_value;
         }
-    };
-
-    struct BestMove
-    {
-        Move move;
-        int eval;
-    };
-
-    class Search
-    {
-        private:
-        public:
-        Board& board_class;
-        Eval& eval_class;
-
-        Search(Board& board, Eval& eval)
-            : board_class(board), eval_class(eval)
-        {
-
-        }
 
         int negamax(int alpha, int beta, int depth, int colour)
         {
             if (depth == 0)
             {
-                return eval_class.quiescence(alpha, beta, colour);
+                return quiescence(alpha, beta, colour);
             }
 
             int best_score{ -1000000000 };
             MovesInfo moves{ board_class.pseudo_legal_move_gen(colour) };
+            order_moves(moves);
             for (int i{}; i < moves.count; i++)
             {
                 Move& move{ moves.moves[i] };
@@ -895,6 +920,7 @@ namespace engine
             best_move.eval = alpha;
             
             MovesInfo moves{ board_class.pseudo_legal_move_gen(colour) };
+            order_moves(moves);
             for (int i{}; i < moves.count; i++)
             {
                 Move& move{ moves.moves[i] };

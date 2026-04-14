@@ -9,9 +9,11 @@ int main()
     engine::Eval eval(board);
     engine::Search search(board, eval);
 
-    int depth{ 6 };
+
+
+    int depth{ 8 };
     int colour{ engine::Colour::white };
-    static constexpr int player_colour{ engine::Colour::white };
+    static constexpr int player_colour{ engine::Colour::black };
 
     while (true)
     {
@@ -82,6 +84,7 @@ int main()
                         }
                     }
                 }
+                board.make_move(player_move);
             }
         }
         else
