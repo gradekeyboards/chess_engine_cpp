@@ -7,7 +7,7 @@ int main()
 {
     engine::Board board;
 
-    int depth{ 8 };
+    int depth{ 6 };
     int colour{ engine::Colour::white };
 
     auto start{ std::chrono::steady_clock::now() };
