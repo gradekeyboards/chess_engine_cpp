@@ -198,6 +198,89 @@ namespace engine
             }
         }
 
+        // This function and the other should probably return std::array<int, 144>
+        static std::unordered_map<int, std::string> get_index_to_string()
+        {
+            std::unordered_map<int, std::string> index_to_string{};
+            for (int i{ BoardPart::start_index }; i <= BoardPart::end_index; i++)
+            {
+                std::string square{};
+                int current_column{ i % BoardPart::columns };
+                int current_row{ i / BoardPart::rows };
+                if (current_column > 1 && current_column < 10) // Ensure it doesn't write to the padding
+                {
+                    switch (current_column)
+                    {
+                        case 2:
+                            square += "a";
+                            break;
+                        case 3:
+                            square += "b";
+                            break;
+                        case 4:
+                            square += "c";
+                            break;
+                        case 5:
+                            square += "d";
+                            break;
+                        case 6:
+                            square += "e";
+                            break;
+                        case 7:
+                            square += "f";
+                            break;
+                        case 8:
+                            square += "g";
+                            break;
+                        case 9:
+                            square += "h";
+                            break;
+                    }
+
+                    switch (current_row)
+                    {
+                        case 2:
+                            square += "8";
+                            break;
+                        case 3:
+                            square += "7";
+                            break;
+                        case 4:
+                            square += "6";
+                            break;
+                        case 5:
+                            square += "5";
+                            break;
+                        case 6:
+                            square += "4";
+                            break;
+                        case 7:
+                            square += "3";
+                            break;
+                        case 8:
+                            square += "2";
+                            break;
+                        case 9:
+                            square += "1";
+                            break;
+                    }
+
+                    index_to_string[i] = square;
+                }
+            }
+            return index_to_string;
+        }
+
+        static std::unordered_map<std::string, int> get_string_to_index()
+        {
+            std::unordered_map<std::string, int> string_to_index{};
+            for (const auto& [index, string] : get_index_to_string())
+            {
+                string_to_index[string] = index;
+            }
+            return string_to_index;
+        }
+
         bool is_square_attacked(int square_index, int defending_colour)
         {
             int colour = defending_colour;
@@ -726,9 +809,145 @@ namespace engine
         }
     };
 
+    // For some reason it wouldn't work if it was in the class?
+    static constexpr std::array<std::array<int, 144>, 7> generate_black_PSTs(const std::array<std::array<int, 144>, 7>& mg_white_PSTs)
+    {
+        std::array<std::array<int, 144>, 7> mg_black_PSTs{};
+        for (int i{}; i < mg_white_PSTs.size(); i++)
+        {
+            const std::array<int, 144>& PST{ mg_white_PSTs[i] };
+            for (int j{}; j < PST.size(); j++)
+            {
+                int value{ PST[j] };
+                int white_index{ j };
+                int black_index{ j + 12 * (11 - 2 * (white_index / 12)) };
+
+                mg_black_PSTs[i][black_index] = value;
+            }
+        }
+        return mg_black_PSTs;
+    }
+
     class Eval
     {
         private:
+        static constexpr std::array<std::array<int, 144>, 7> mg_white_PSTs
+        {{
+            // Padding
+            {
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+            },
+
+            // Pawns
+            {
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,  98, 134,  61,  95,  68, 126,  34, -11,   0,   0, 
+                0,   0,  -6,   7,  26,  31,  65,  56,  25, -20,   0,   0, 
+                0,   0, -14,  13,   6,  21,  23,  12,  17, -23,   0,   0, 
+                0,   0, -27,  -2,  -5,  12,  17,   6,  10, -25,   0,   0, 
+                0,   0, -26,  -4,  -4, -10,   3,   3,  33, -12,   0,   0, 
+                0,   0, -35,  -1, -20, -23, -15,  24,  38, -22,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+            },
+
+            // Knights
+            {
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0, -167, -89, -34, -49,  61, -97, -15, -107,   0,   0, 
+                0,   0, -73, -41,  72,  36,  23,  62,   7, -17,   0,   0, 
+                0,   0, -47,  60,  37,  65,  84, 129,  73,  44,   0,   0, 
+                0,   0,  -9,  17,  19,  53,  37,  69,  18,  22,   0,   0, 
+                0,   0, -13,   4,  16,  13,  28,  19,  21,  -8,   0,   0, 
+                0,   0, -23,  -9,  12,  10,  19,  17,  25, -16,   0,   0, 
+                0,   0, -29, -53, -12,  -3,  -1,  18, -14, -19,   0,   0, 
+                0,   0, -105, -21, -58, -33, -17, -28, -19, -23,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+            },
+
+            // Bishops
+            {
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0, -29,   4, -82, -37, -25, -42,   7,  -8,   0,   0, 
+                0,   0, -26,  16, -18, -13,  30,  59,  18, -47,   0,   0, 
+                0,   0, -16,  37,  43,  40,  35,  50,  37,  -2,   0,   0, 
+                0,   0,  -4,   5,  19,  50,  37,  37,   7,  -2,   0,   0, 
+                0,   0,  -6,  13,  13,  26,  34,  12,  10,   4,   0,   0, 
+                0,   0,   0,  15,  15,  15,  14,  27,  18,  10,   0,   0, 
+                0,   0,   4,  15,  16,   0,   7,  21,  33,   1,   0,   0, 
+                0,   0, -33,  -3, -14, -21, -13, -12, -39, -21,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+            },
+
+            // Rooks
+            {
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,  32,  42,  32,  51,  63,   9,  31,  43,   0,   0, 
+                0,   0,  27,  32,  58,  62,  80,  67,  26,  44,   0,   0, 
+                0,   0,  -5,  19,  26,  36,  17,  45,  61,  16,   0,   0, 
+                0,   0, -24, -11,   7,  26,  24,  35,  -8, -20,   0,   0, 
+                0,   0, -36, -26, -12,  -1,   9,  -7,   6, -23,   0,   0, 
+                0,   0, -45, -25, -16, -17,   3,   0,  -5, -33,   0,   0, 
+                0,   0, -44, -16, -20,  -9,  -1,  11,  -6, -71,   0,   0, 
+                0,   0, -19, -13,   1,  17,  16,   7, -37, -26,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+            },
+
+            // Queens
+            {
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0, -28,   0,  29,  12,  59,  44,  43,  45,   0,   0, 
+                0,   0, -24, -39,  -5,   1, -16,  57,  28,  54,   0,   0, 
+                0,   0, -13, -17,   7,   8,  29,  56,  47,  57,   0,   0, 
+                0,   0, -27, -27, -16, -16,  -1,  17,  -2,   1,   0,   0, 
+                0,   0,  -9, -26,  -9, -10,  -2,  -4,   3,  -3,   0,   0, 
+                0,   0, -14,   2, -11,  -2,  -5,   2,  14,   5,   0,   0, 
+                0,   0, -35,  -8,  11,   2,   8,  15,  -3,   1,   0,   0, 
+                0,   0,  -1, -18,  -9,  10, -15, -25, -31, -50,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+            },
+
+            // Kings
+            {
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0, -65,  23,  16, -15, -56, -34,   2,  13,   0,   0, 
+                0,   0,  29,  -1, -20,  -7,  -8,  -4, -38, -29,   0,   0, 
+                0,   0,  -9,  24,   2, -16, -20,   6,  22, -22,   0,   0, 
+                0,   0, -17, -20, -12, -27, -30, -25, -14, -36,   0,   0, 
+                0,   0, -49,  -1, -27, -39, -46, -44, -33, -51,   0,   0, 
+                0,   0, -14, -14, -22, -46, -44, -30, -15, -27,   0,   0, 
+                0,   0,   1,   7,  -8, -64, -43, -16,   9,   8,   0,   0, 
+                0,   0, -15,  36,  12, -54,   8, -28,  24,  14,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 
+                0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+            },
+        }};
+
+        static constexpr std::array<std::array<int, 144>, 7> mg_black_PSTs = generate_black_PSTs(mg_white_PSTs);
+
         // We can change these later
         static constexpr std::array<int, 7> piece_values
         {
@@ -745,38 +964,36 @@ namespace engine
 
         }
 
-        int evaluate()
+        int evaluate(int colour)
         {
             int evaluation{};
-            for (int piece : board_class.board)
+            for (int i{}; i < board_class.board.size(); i++)
             {
-                int colour = (piece > 0) ? Colour::white : Colour::black;
-                switch (std::abs(piece))
+                int piece{ board_class.board[i] };
+                if (piece == Piece::empty || piece == BoardPart::padding) continue;
+                int piece_type{ std::abs(piece) };
+
+
+                if (piece > 0)
                 {
-                    case Piece::white_pawn:
-                        evaluation += piece_values[Piece::white_pawn] * colour;
-                        break;
-                    case Piece::white_knight:
-                        evaluation += piece_values[Piece::white_knight] * colour;
-                        break;
-                    case Piece::white_bishop:
-                        evaluation += piece_values[Piece::white_bishop] * colour;
-                        break;
-                    case Piece::white_rook:
-                        evaluation += piece_values[Piece::white_rook] * colour;
-                        break;
-                    case Piece::white_queen:
-                        evaluation += piece_values[Piece::white_queen] * colour;
-                        break;
-                    case Piece::white_king:
-                        evaluation += piece_values[Piece::white_king] * colour;
-                        break;
-                    default:
-                        continue;   
+                    evaluation += piece_values[piece_type];
+                    evaluation += mg_white_PSTs[piece_type][i];
+                }
+                else
+                {
+                    evaluation -= piece_values[piece_type];
+                    evaluation -= mg_black_PSTs[piece_type][i];
                 }
             }
 
-            return evaluation;
+            if (colour == Colour::white)
+            {
+                return evaluation;
+            }
+            else
+            {
+                return -evaluation;
+            }
         }
     };
 
@@ -822,7 +1039,7 @@ namespace engine
 
         int quiescence(int alpha, int beta, int colour)
         {
-            int best_value{ eval_class.evaluate() * colour };
+            int best_value{ eval_class.evaluate(colour) };
             if (best_value >= beta)
             {
                 return best_value;
@@ -838,7 +1055,7 @@ namespace engine
             for (int i{}; i < moves.count; i++)
             {
                 Move& move{ moves.moves[i] };
-                if (move.flag != MoveFlag::capture && move.flag != MoveFlag::promotion && move.flag != MoveFlag::promotion_capture) continue; // We only want to look at these types of moves for now
+                if (move.flag != MoveFlag::capture && move.flag != MoveFlag::promotion && move.flag != MoveFlag::promotion_capture && move.flag != MoveFlag::en_passant) continue; // We only want to look at these types of moves for now
                 MoveHistory history{ board_class.make_move(move) };
 
                 int target_king_position = (colour == Colour::white) ? board_class.white_king_position : board_class.black_king_position;
