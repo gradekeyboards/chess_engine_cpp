@@ -20,7 +20,7 @@ int main()
     {
         int depth{ 7 };
         int colour{ engine::Colour::white };
-        static constexpr int player_colour{ engine::Colour::black };
+        static constexpr int player_colour{ engine::Colour::white };
 
         std::unordered_map<int, std::string> index_to_string{ engine::Board::get_index_to_string() };
         std::unordered_map<std::string, int> string_to_index{ engine::Board::get_string_to_index() };
@@ -108,7 +108,7 @@ int main()
             {
                 engine::BestMove best_move{ search.get_best_move(depth, colour) };
                 board.make_move(best_move.move);
-                std::cout << "Eval for engine: " << best_move.eval << '\n';
+                std::cout << "Eval for engine: " << static_cast<double>(best_move.eval) / 100 << '\n';
             }
 
             colour = -colour;
