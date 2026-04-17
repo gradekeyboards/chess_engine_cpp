@@ -1,8 +1,12 @@
+#ifndef ENGINE_HPP
+#define ENGINE_HPP
+
 #include <array>
 #include <iostream>
 #include <unordered_map>
 #include <cctype>
 #include <algorithm>
+#include <random>
 
 namespace engine
 {
@@ -40,6 +44,17 @@ namespace engine
     {
         static constexpr int white{ 1 };
         static constexpr int black{ -1 };
+    }
+
+    namespace Zobrist
+    {
+        static constexpr int white_kingside_castle{ 0 };
+        static constexpr int white_queenside_castle{ 1 };
+        static constexpr int black_kingside_castle { 2 };
+        static constexpr int black_queenside_castle{ 3 };
+
+        static constexpr int white{ 1 };
+        static constexpr int black{ 0 };
     }
 
     enum class MoveFlag
@@ -83,6 +98,7 @@ namespace engine
         int eg_PST_evaluation;
         int white_material;
         int black_material;
+        uint64_t current_zobrist_position;
     };
 
     // For some reason it wouldn't work if it was in the class?
@@ -385,6 +401,17 @@ namespace engine
         static constexpr std::array<std::array<int, 144>, 7> mg_black_PSTs = generate_black_PSTs(mg_white_PSTs);
         static constexpr std::array<std::array<int, 144>, 7> eg_black_PSTs = generate_black_PSTs(eg_white_PSTs);
 
+        // Zobrist keys
+        // 2 = black and white, 6 + 1 = the number of piece types + 1 for padding (so that 1 = pawn, 2 = knight...), 144 = board size
+        std::array<std::array<std::array<uint64_t, 144>, 7>, 2> zobrist_piece_keys{};
+        std::array<uint64_t, 4> zobrist_castle_right_keys{};
+        std::array<uint64_t, 8> zobrist_en_passant_keys{};
+        uint64_t zobrist_white_to_move{}; // If this is in current_zobrist_position, that means it's white's turn
+
+        // To check for threefold repetition and 50-move rule draws
+        std::vector<uint64_t> position_history{};
+        uint64_t current_zobrist_position{};
+
         public:
         Board()
         {
@@ -409,6 +436,45 @@ namespace engine
             }
 
             board.fill(-9);
+
+            // Zobrist keys setup
+            std::random_device rand_dev{};
+            std::mt19937_64 gen{ rand_dev() };
+            std::uniform_int_distribution<uint64_t> distrib{};
+
+            for (int i{}; i < zobrist_piece_keys.size(); i++)
+            {
+                auto& colour{ zobrist_piece_keys[i] };
+                for (int j{}; j < colour.size(); j++)
+                {
+                    auto& piece_type{ colour[j] };
+                    for (int k{}; k < piece_type.size(); k++)
+                    {
+                        if (j == 0)
+                        {
+                            zobrist_piece_keys[i][j][k] = 0;
+                        }
+                        else
+                        {
+                            zobrist_piece_keys[i][j][k] = distrib(gen);
+                        }
+                    }
+                }
+            }
+
+            for (auto& column : zobrist_en_passant_keys)
+            {
+                column = distrib(gen);
+            }
+
+            for (auto& castle_right : zobrist_castle_right_keys)
+            {
+                castle_right = distrib(gen);
+                current_zobrist_position ^= castle_right;
+            }
+
+            zobrist_white_to_move = distrib(gen);
+            current_zobrist_position ^= zobrist_white_to_move;
 
             static constexpr std::array<int, 8> start_row
             {
@@ -457,8 +523,15 @@ namespace engine
                         mg_PST_evaluation -= mg_black_PSTs[piece_type][i];
                         eg_PST_evaluation -= eg_black_PSTs[piece_type][i];
                     }
+
+                    // Setup the initial zobrist position
+                    int zobrist_colour = (piece > 0) ? 1 : 0;
+                    current_zobrist_position ^= zobrist_piece_keys[zobrist_colour][piece_type][i];
                 }
             }
+
+            position_history.push_back(current_zobrist_position); // The initial position because techically the players could move their knights back 
+                                                                  // and forth to get the same position many times and cause threefold repetition
         }
 
         friend class Search;
@@ -857,6 +930,7 @@ namespace engine
             history.eg_PST_evaluation = eg_PST_evaluation;
             history.white_material = white_material;
             history.black_material = black_material;
+            history.current_zobrist_position = current_zobrist_position;
 
             int piece = board[move.start_square];
             int piece_type{ std::abs(piece) };
@@ -890,20 +964,28 @@ namespace engine
                 mg_PST_evaluation -= mg_white_PSTs[piece_type][move.start_square];
                 eg_PST_evaluation -= eg_white_PSTs[piece_type][move.start_square];
 
+                current_zobrist_position ^= zobrist_piece_keys[Zobrist::white][piece_type][move.start_square];
+
                 // Plus to remove a black piece
                 mg_PST_evaluation += mg_black_PSTs[captured_piece_type][move.destination_square];
                 eg_PST_evaluation += eg_black_PSTs[captured_piece_type][move.destination_square];
+
+                current_zobrist_position ^= zobrist_piece_keys[Zobrist::black][captured_piece_type][move.destination_square];
 
                 if (move.promotion_piece == 0)
                 {
                     // Plus to add a white piece
                     mg_PST_evaluation += mg_white_PSTs[piece_type][move.destination_square];
                     eg_PST_evaluation += eg_white_PSTs[piece_type][move.destination_square];
+
+                    current_zobrist_position ^= zobrist_piece_keys[Zobrist::white][piece_type][move.destination_square];
                 }
                 else
                 {
                     mg_PST_evaluation += mg_white_PSTs[promotion_piece_type][move.destination_square];
                     eg_PST_evaluation += eg_white_PSTs[promotion_piece_type][move.destination_square];
+
+                    current_zobrist_position ^= zobrist_piece_keys[Zobrist::white][promotion_piece_type][move.destination_square];
                 }
             }
             else
@@ -912,20 +994,28 @@ namespace engine
                 mg_PST_evaluation += mg_black_PSTs[piece_type][move.start_square];
                 eg_PST_evaluation += eg_black_PSTs[piece_type][move.start_square];
 
+                current_zobrist_position ^= zobrist_piece_keys[Zobrist::black][piece_type][move.start_square];
+
                 // Minus to remove a white piece
                 mg_PST_evaluation -= mg_white_PSTs[captured_piece_type][move.destination_square];
                 eg_PST_evaluation -= eg_white_PSTs[captured_piece_type][move.destination_square];
+
+                current_zobrist_position ^= zobrist_piece_keys[Zobrist::white][captured_piece_type][move.destination_square];
 
                 if (move.promotion_piece == 0)
                 {
                     // Minus to add a black piece
                     mg_PST_evaluation -= mg_black_PSTs[piece_type][move.destination_square];
                     eg_PST_evaluation -= eg_black_PSTs[piece_type][move.destination_square];
+
+                    current_zobrist_position ^= zobrist_piece_keys[Zobrist::black][piece_type][move.destination_square];
                 }
                 else
                 {
                     mg_PST_evaluation -= mg_black_PSTs[promotion_piece_type][move.destination_square];
                     eg_PST_evaluation -= eg_black_PSTs[promotion_piece_type][move.destination_square];
+
+                    current_zobrist_position ^= zobrist_piece_keys[Zobrist::black][promotion_piece_type][move.destination_square];
                 }
             }
 
@@ -946,6 +1036,7 @@ namespace engine
                 {
                     white_material += piece_values[promotion_piece_type];
                     white_material -= piece_values[Piece::white_pawn];
+
                 }
                 else if (move.promotion_piece < 0)
                 {
@@ -961,12 +1052,16 @@ namespace engine
                     mg_PST_evaluation += mg_black_PSTs[piece_type][move.destination_square + BoardPart::columns];
                     eg_PST_evaluation += eg_black_PSTs[piece_type][move.destination_square + BoardPart::columns];
                     black_material -= piece_values[piece_type];
+
+                    current_zobrist_position ^= zobrist_piece_keys[Zobrist::black][piece_type][move.destination_square + BoardPart::columns];
                 }
                 else if(piece == Piece::black_pawn){
                     board[move.destination_square - BoardPart::columns] = Piece::empty;
                     mg_PST_evaluation -= mg_white_PSTs[piece_type][move.destination_square - BoardPart::columns];
                     eg_PST_evaluation -= eg_white_PSTs[piece_type][move.destination_square - BoardPart::columns];
                     white_material -= piece_values[piece_type];
+
+                    current_zobrist_position ^= zobrist_piece_keys[Zobrist::white][piece_type][move.destination_square - BoardPart::columns];
                 }
             }
 
@@ -985,6 +1080,9 @@ namespace engine
 
                         mg_PST_evaluation += mg_white_PSTs[Piece::white_rook][move.destination_square - 1];
                         eg_PST_evaluation += eg_white_PSTs[Piece::white_rook][move.destination_square - 1];
+
+                        current_zobrist_position ^= zobrist_piece_keys[Zobrist::white][Piece::white_rook][move.destination_square - 1];
+                        current_zobrist_position ^= zobrist_piece_keys[Zobrist::white][Piece::white_rook][move.destination_square + 1];
                     }
                     else if(piece == Piece::black_king){
                         board[move.destination_square - 1] = Piece::black_rook;
@@ -995,6 +1093,9 @@ namespace engine
 
                         mg_PST_evaluation -= mg_black_PSTs[Piece::white_rook][move.destination_square - 1];
                         eg_PST_evaluation -= eg_black_PSTs[Piece::white_rook][move.destination_square - 1];
+
+                        current_zobrist_position ^= zobrist_piece_keys[Zobrist::black][Piece::white_rook][move.destination_square - 1];
+                        current_zobrist_position ^= zobrist_piece_keys[Zobrist::black][Piece::white_rook][move.destination_square + 1];
                     }
                 }
                 else if(move.destination_square < move.start_square){ //queenside(leftside)
@@ -1007,6 +1108,9 @@ namespace engine
 
                         mg_PST_evaluation += mg_white_PSTs[Piece::white_rook][move.destination_square + 1];
                         eg_PST_evaluation += eg_white_PSTs[Piece::white_rook][move.destination_square + 1];
+
+                        current_zobrist_position ^= zobrist_piece_keys[Zobrist::white][Piece::white_rook][move.destination_square - 2];
+                        current_zobrist_position ^= zobrist_piece_keys[Zobrist::white][Piece::white_rook][move.destination_square + 1];
                     }
                     else if(piece == Piece::black_king){
                         board[move.destination_square + 1] = Piece::black_rook;
@@ -1017,19 +1121,39 @@ namespace engine
 
                         mg_PST_evaluation -= mg_black_PSTs[Piece::white_rook][move.destination_square + 1];
                         eg_PST_evaluation -= eg_black_PSTs[Piece::white_rook][move.destination_square + 1];
+
+                        current_zobrist_position ^= zobrist_piece_keys[Zobrist::black][Piece::white_rook][move.destination_square - 2];
+                        current_zobrist_position ^= zobrist_piece_keys[Zobrist::black][Piece::white_rook][move.destination_square + 1];
                     }
                 }
             }
 
             // // update en_passant_square
+            // Remove the old en passant from the Zobrist position if there was one
+            if (en_passant_square != -1)
+            {
+                current_zobrist_position ^= zobrist_en_passant_keys[(en_passant_square % BoardPart::columns) - 2];
+            }
+
             en_passant_square = -1;
             if((piece == Piece::white_pawn || piece == Piece::black_pawn) && (move.flag == MoveFlag::double_push)){
                 en_passant_square = (move.start_square + move.destination_square) / 2;
+                current_zobrist_position ^= zobrist_en_passant_keys[(en_passant_square % BoardPart::columns) - 2]; // -2 because the array starts at 0 but the first column is 2
             }
 
             //update castling
             //king moves
             if(piece == Piece::white_king){
+                if (white_kingside_castle == true)
+                {
+                    current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::white_kingside_castle];
+                }
+
+                if (white_queenside_castle == true)
+                {
+                    current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::white_queenside_castle];
+                }
+
                 white_kingside_castle = false;
                 white_queenside_castle = false;
 
@@ -1037,6 +1161,16 @@ namespace engine
                 white_king_position = move.destination_square;
             }
             else if(piece == Piece::black_king){
+                if (black_kingside_castle == true)
+                {
+                    current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::black_kingside_castle];
+                }
+
+                if (black_queenside_castle == true)
+                {
+                    current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::black_queenside_castle];
+                }
+
                 black_kingside_castle = false;
                 black_queenside_castle = false;
                 black_king_position = move.destination_square;
@@ -1044,37 +1178,80 @@ namespace engine
             //rook moved from original square
             if(piece == Piece::white_rook){
                 if(move.start_square == white_kingside_rook_starting_square){
+                    if (white_kingside_castle == true)
+                    {
+                        current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::white_kingside_castle];
+                    }
+
                     white_kingside_castle = false;
                 }
                 else if(move.start_square == white_queenside_rook_starting_square){
+                    if (white_queenside_castle == true)
+                    {
+                        current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::white_queenside_castle];
+                    }
+
                     white_queenside_castle = false;
                 }
             }
             else if(piece == Piece::black_rook){
                 if(move.start_square == black_kingside_rook_starting_square){
+                    if (black_kingside_castle == true)
+                    {
+                        current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::black_kingside_castle];
+                    }
+
                     black_kingside_castle = false;
                 }
                 else if(move.start_square == black_queenside_rook_starting_square){
+                    if (black_queenside_castle == true)
+                    {
+                        current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::black_queenside_castle];
+                    }
+
                     black_queenside_castle = false;
                 }
             }
             //rook was captured
             if(captured_piece == Piece::white_rook){
                 if(move.destination_square == white_kingside_rook_starting_square){
+                    if (white_kingside_castle == true)
+                    {
+                        current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::white_kingside_castle];
+                    }
+
                     white_kingside_castle = false;
                 }
                 else if(move.destination_square == white_queenside_rook_starting_square){
+                    if (white_queenside_castle == true)
+                    {
+                        current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::white_queenside_castle];
+                    }
+
                     white_queenside_castle = false;
                 }
             }
             else if(captured_piece == Piece::black_rook){
                 if(move.destination_square == black_kingside_rook_starting_square){
+                    if (black_kingside_castle == true)
+                    {
+                        current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::black_kingside_castle];
+                    }
+
                     black_kingside_castle = false;
                 }
                 else if(move.destination_square == black_queenside_rook_starting_square){
+                    if (black_queenside_castle == true)
+                    {
+                        current_zobrist_position ^= zobrist_castle_right_keys[Zobrist::black_queenside_castle];
+                    }
+
                     black_queenside_castle = false;
                 }
             }
+
+            current_zobrist_position ^= zobrist_white_to_move;
+            position_history.push_back(current_zobrist_position);
 
             return history;
         }
@@ -1187,6 +1364,13 @@ namespace engine
             eg_PST_evaluation = history.eg_PST_evaluation;
             white_material = history.white_material;
             black_material = history.black_material;
+            current_zobrist_position = history.current_zobrist_position;
+
+            // Remove the latest move added by make_move()
+            if (!position_history.empty())
+            {
+                position_history.pop_back();
+            }
         }
 
         unsigned long long perft(int depth, int colour)
@@ -1392,6 +1576,24 @@ namespace engine
                     continue;
                 }
 
+                // Threefold repetition rule
+                bool is_threefold{ false };
+                int repetitions{};
+
+                for (int j{ board_class.position_history.size() - 1}; j >= 0; j--)
+                {
+                    uint64_t position{ board_class.position_history[j] };
+                    if (position == board_class.current_zobrist_position)
+                    {
+                        repetitions++;
+                        if (repetitions == 2)
+                        {
+                            board_class.undo_move(move, history);
+                            return 0;
+                        }
+                    }
+                }
+
                 int score{ -negamax(-beta, -alpha, depth - 1, -colour) };
                 board_class.undo_move(move, history);
 
@@ -1419,6 +1621,7 @@ namespace engine
 
             BestMove best_move{};
             best_move.eval = alpha;
+            best_move.eval = -2000000000;
             
             MovesInfo moves{ board_class.pseudo_legal_move_gen(colour) };
             order_moves(moves);
@@ -1453,3 +1656,5 @@ namespace engine
 
     };
 }
+
+#endif
