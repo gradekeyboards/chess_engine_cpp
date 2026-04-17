@@ -11,15 +11,14 @@ static constexpr bool UCI = true;
 
 int main()
 {
+    uint64_t TT_size{ 2097152 };
     engine::Board board;
     engine::Eval eval(board);
-    engine::Search search(board, eval);
-
-
+    engine::Search search(board, eval, TT_size);
 
     if (PLAY)
     {
-        int depth{ 7 };
+        int depth{ 8 };
         int colour{ engine::Colour::white };
         static constexpr int player_colour{ engine::Colour::white };
 
@@ -224,7 +223,7 @@ int main()
                 }
                 else if (word == "go")
                 {
-                    int default_depth{ 7 };
+                    int default_depth{ 9 };
                     std::string sub_word{};
 
                     while (input_stream >> sub_word)

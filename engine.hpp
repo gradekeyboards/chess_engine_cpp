@@ -1471,26 +1471,49 @@ namespace engine
         int eval;
     };
 
+    enum class NodeType
+    {
+        exact = 1,
+        lower_bound = 2,
+        upper_bound = 3,
+    };
+
+    struct TTEntry
+    {
+        uint64_t zobrist_key;
+        int depth;
+        int best_score;
+        // int age; for now we can just do always replace if the depth is higher
+        NodeType flag;
+        Move best_move;
+    };
+
     class Search
     {
         private:
+        std::vector<TTEntry> transposition_table{};
+
         public:
         Board& board_class;
         Eval& eval_class;
 
-        Search(Board& board, Eval& eval)
+        Search(Board& board, Eval& eval, uint64_t TT_size)
             : board_class(board), eval_class(eval)
         {
-
+            transposition_table.resize(TT_size);
         }
 
-        void order_moves(MovesInfo& moves)
+        void order_moves(MovesInfo& moves, Move& hash_move)
         {
             // MVV LVA
             for (int i{}; i < moves.count; i++)
             {
                 Move& move{ moves.moves[i] };
-                if (move.flag == MoveFlag::capture)
+                if (move.start_square == hash_move.start_square && move.destination_square == hash_move.destination_square)
+                {
+                    move.score = 1000000;
+                }
+                else if (move.flag == MoveFlag::capture)
                 {
                     int victim{ std::abs(board_class.board[move.destination_square]) };
                     int attacker{ std::abs(board_class.board[move.start_square]) };
@@ -1507,6 +1530,8 @@ namespace engine
 
         int quiescence(int alpha, int beta, int colour)
         {
+            Move hash_move{};
+
             int best_value{ eval_class.evaluate(colour) };
             if (best_value >= beta)
             {
@@ -1519,7 +1544,7 @@ namespace engine
             }
 
             MovesInfo moves{ board_class.pseudo_legal_move_gen(colour) };
-            order_moves(moves);
+            order_moves(moves, hash_move);
             for (int i{}; i < moves.count; i++)
             {
                 Move& move{ moves.moves[i] };
@@ -1556,14 +1581,40 @@ namespace engine
 
         int negamax(int alpha, int beta, int depth, int colour)
         {
+            int original_alpha{ alpha };
+            size_t TT_index{ board_class.current_zobrist_position % transposition_table.size() };
+            TTEntry& TT_entry{ transposition_table[TT_index] };
+            Move hash_move{};
+
+            if (TT_entry.zobrist_key == board_class.current_zobrist_position)
+            {
+                hash_move = TT_entry.best_move;
+                if (TT_entry.depth >= depth)
+                {
+                    if (TT_entry.flag == NodeType::exact)
+                    {
+                        return TT_entry.best_score;
+                    }
+                    else if (TT_entry.flag == NodeType::lower_bound && TT_entry.best_score >= beta)
+                    {
+                        return TT_entry.best_score;
+                    }
+                    else if (TT_entry.flag == NodeType::upper_bound && TT_entry.best_score <= alpha)
+                    {
+                        return TT_entry.best_score;
+                    }
+                }
+            }
+
             if (depth == 0)
             {
                 return quiescence(alpha, beta, colour);
             }
 
             int best_score{ -1000000000 };
+            Move best_move{};
             MovesInfo moves{ board_class.pseudo_legal_move_gen(colour) };
-            order_moves(moves);
+            order_moves(moves, hash_move);
             for (int i{}; i < moves.count; i++)
             {
                 Move& move{ moves.moves[i] };
@@ -1602,58 +1653,96 @@ namespace engine
                     best_score = score;
                     if (score > alpha)
                     {
+                        best_move = move;
                         alpha = score;
                     }
                 }
 
                 if (score >= beta)
                 {
+                    if (TT_entry.zobrist_key == 0 || TT_entry.depth <= depth)
+                    {
+                        TT_entry.zobrist_key = board_class.current_zobrist_position;
+                        TT_entry.best_score = best_score;
+                        TT_entry.depth = depth;
+                        TT_entry.flag = NodeType::lower_bound;
+                        TT_entry.best_move = move;
+                    }
                     return best_score;
                 }
             }
+
+            if (TT_entry.zobrist_key == 0 || TT_entry.depth <= depth)
+            {
+                if (best_score <= original_alpha)
+                {
+                    TT_entry.flag = NodeType::upper_bound;
+                    TT_entry.best_move = Move{};
+                }
+                else
+                {
+                    TT_entry.flag = NodeType::exact;
+                    TT_entry.best_move = best_move;
+                }
+
+                TT_entry.zobrist_key = board_class.current_zobrist_position;
+                TT_entry.best_score = best_score;
+                TT_entry.depth = depth;
+            }
+
             return best_score;
         }
 
         BestMove get_best_move(int depth, int colour)
         {
-            int alpha{ -1000000000 };
-            static constexpr int beta{ 1000000000 };
-
+            Move previous_best_move{};
             BestMove best_move{};
-            best_move.eval = alpha;
             best_move.eval = -2000000000;
-            
-            MovesInfo moves{ board_class.pseudo_legal_move_gen(colour) };
-            order_moves(moves);
-            for (int i{}; i < moves.count; i++)
-            {
-                Move& move{ moves.moves[i] };
-                MoveHistory history{board_class.make_move(move) };
 
-                int target_king_position = (colour == Colour::white) ? board_class.white_king_position : board_class.black_king_position;
-                if (board_class.is_square_attacked(target_king_position, colour)) // Skip illegal moves
+            for (int current_depth{ 1 }; current_depth <= depth; current_depth++)
+            {   
+                int alpha{ -1000000000 };
+                static constexpr int beta{ 1000000000 };
+
+                int current_depth_best_score{ -2000000000 };
+                Move current_depth_best_move{};
+
+                MovesInfo moves{ board_class.pseudo_legal_move_gen(colour) };
+
+                order_moves(moves, previous_best_move);
+                for (int i{}; i < moves.count; i++)
                 {
-                    board_class.undo_move(move, history);
-                    continue;
-                }
+                    Move& move{ moves.moves[i] };
+                    MoveHistory history{board_class.make_move(move) };
 
-                int score{ -negamax(-beta, -alpha, depth - 1, -colour) };
-                board_class.undo_move(move, history);
-
-                if (score > best_move.eval)
-                {
-                    best_move.eval = score;
-                    best_move.move = move;
-
-                    if (score > alpha)
+                    int target_king_position = (colour == Colour::white) ? board_class.white_king_position : board_class.black_king_position;
+                    if (board_class.is_square_attacked(target_king_position, colour)) // Skip illegal moves
                     {
-                        alpha = score;
+                        board_class.undo_move(move, history);
+                        continue;
+                    }
+
+                    int score{ -negamax(-beta, -alpha, current_depth - 1, -colour) };
+                    board_class.undo_move(move, history);
+
+                    if (score > current_depth_best_score)
+                    {
+                        current_depth_best_score = score;
+                        current_depth_best_move = move;
+
+                        if (score > alpha)
+                        {
+                            alpha = score;
+                        }
                     }
                 }
+
+                previous_best_move = current_depth_best_move;
+                best_move.move = current_depth_best_move;
+                best_move.eval = current_depth_best_score;
             }
             return best_move;
         }
-
     };
 }
 
