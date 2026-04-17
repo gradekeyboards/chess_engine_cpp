@@ -1580,7 +1580,7 @@ namespace engine
                 bool is_threefold{ false };
                 int repetitions{};
 
-                for (int j{ board_class.position_history.size() - 1}; j >= 0; j--)
+                for (int j{ static_cast<int>(board_class.position_history.size()) - 1}; j >= 0; j--)
                 {
                     uint64_t position{ board_class.position_history[j] };
                     if (position == board_class.current_zobrist_position)
